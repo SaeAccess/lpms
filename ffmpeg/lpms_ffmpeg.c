@@ -973,6 +973,7 @@ int process_in(struct input_ctx *ictx, int framecount, AVFrame *frame, AVPacket 
 }
   int ret = 0;
 
+  //printf("TRACE: %s --- read frame count %d\n",__func__, framecount);
   // Read a packet and attempt to decode it.
   // If decoding was not possible, return the packet anyway for streamcopy
   av_init_packet(pkt);
@@ -1007,9 +1008,11 @@ int process_in(struct input_ctx *ictx, int framecount, AVFrame *frame, AVPacket 
       }
     }
 
+    //printf("\tvid: %d, Sent packet pts %ld, ret %d\n", ist->index == ictx->vi, pkt->pts, ret);
     ret = avcodec_send_packet(decoder, pkt);
     if (ret < 0) dec_err("Error sending packet to decoder\n");
     ret = avcodec_receive_frame(decoder, frame);
+    //printf("\tRecv frame pts %ld, ret %d\n", frame->pts, ret);
     if (ret == AVERROR(EAGAIN)) {
       // Distinguish from EAGAIN that may occur with
       // av_read_frame or avcodec_send_packet
@@ -1046,7 +1049,9 @@ dec_flush:
       // Classic flushing by sending NULL packets to decoder
       ictx->flushing = 1;
       ret = avcodec_send_packet(ictx->vc, NULL);
+      //printf("\tvid: 1, Sent flush packet ret %d\n", ret);
       ret = avcodec_receive_frame(ictx->vc, frame);
+      //printf("\tRecv frame pts %ld, ret %d\n", frame->pts, ret);
       if (ret == AVERROR_EOF) {
         avcodec_flush_buffers(ictx->vc);
         ictx->flushed = 1;
@@ -1098,6 +1103,7 @@ int encode(AVCodecContext* encoder, AVFrame *frame, struct output_ctx* octx, AVS
   int ret = 0;
   AVPacket pkt = {0};
 
+  //printf("TRACE: %s --- frame: %d, pts : %d\n",__func__, frame, (frame)?frame->pts:-1);
   if (AVMEDIA_TYPE_VIDEO == ost->codecpar->codec_type && frame) {
     if (!octx->res->frames) {
       frame->pict_type = AV_PICTURE_TYPE_I;
@@ -1150,6 +1156,7 @@ int process_out(struct input_ctx *ictx, struct output_ctx *octx, AVCodecContext 
   int ret = 0;
   int is_flushing = 0;
 
+  //printf("TRACE: %s --- infpts: %d\n",__func__, (inf) ? inf->pts: -1);
   if (!encoder) proc_err("Trying to transmux; not supported")
 
   if (!filter || !filter->active) {
@@ -1170,11 +1177,12 @@ int process_out(struct input_ctx *ictx, struct output_ctx *octx, AVCodecContext 
   // Start filter flushing process if necessary
   if (!inf && !filter->flushed) {
     // Set input frame to the last frame
-    // And increment pts offset by pkt_duration
-    // TODO It may make sense to use the expected output packet duration instead
+    // And increment pts offset by expected output packet duration
+    // expected output pts = (input_pts / pkt_duration) * (output_fps / input_fps)
     int is_video = AVMEDIA_TYPE_VIDEO == ost->codecpar->codec_type;
     AVFrame *frame = is_video ? ictx->last_frame_v : ictx->last_frame_a;
-    filter->flush_offset += frame->pkt_duration;
+    AVStream *ist = ictx->ic->streams[ictx->vi];
+    filter->flush_offset += is_video ? av_rescale_q(frame->pkt_duration, ist->r_frame_rate, octx->fps) : frame->pkt_duration;
     inf = frame;
     inf->opaque = (void*)inf->pts; // value doesn't matter; just needs to be set
     is_flushing = 1;
@@ -1213,7 +1221,7 @@ int process_out(struct input_ctx *ictx, struct output_ctx *octx, AVCodecContext 
       // If any of these no longer hold (eg, due to future changes) then some
       // unit tests should fail, and this approach needs to be re-evaluated.
       if (octx->fps.den) filter->flush_count += 1;
-      else filter->flush_count += frame->pkt_duration;
+      else filter->flush_count += filter->flush_offset;
 
       // don't set flushed flag in case this is a flush from a previous segment
       if (is_flushing) filter->flushed = 1;
