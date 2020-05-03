@@ -13,11 +13,12 @@ import (
 
 	"path"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/golang/glog"
+	"github.com/livepeer/joy4/av"
 	"github.com/livepeer/lpms/ffmpeg"
 	"github.com/livepeer/lpms/stream"
 	"github.com/livepeer/m3u8"
-	"github.com/livepeer/joy4/av"
 )
 
 var ErrSegmenterTimeout = errors.New("SegmenterTimeout")
@@ -60,13 +61,20 @@ type FFMpegVideoSegmenter struct {
 	curPlWaitTime  time.Duration
 	curSegWaitTime time.Duration
 	SegLen         time.Duration
+	watcher        *fsnotify.Watcher
 }
 
 func NewFFMpegVideoSegmenter(workDir string, strmID string, localRtmpUrl string, opt SegmenterOptions) *FFMpegVideoSegmenter {
 	if opt.SegLength == 0 {
 		opt.SegLength = time.Second * 4
 	}
-	return &FFMpegVideoSegmenter{WorkDir: workDir, StrmID: strmID, LocalRtmpUrl: localRtmpUrl, SegLen: opt.SegLength, curSegment: opt.StartSeq}
+
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		glog.V(4).Infof("Error creating fsnotify.Watcher: %v", err)
+	}
+
+	return &FFMpegVideoSegmenter{WorkDir: workDir, StrmID: strmID, LocalRtmpUrl: localRtmpUrl, SegLen: opt.SegLength, curSegment: opt.StartSeq, watcher: watcher}
 }
 
 //RTMPToHLS invokes FFMpeg to do the segmenting. This method blocks until the segmenter exits.
@@ -89,18 +97,71 @@ func (s *FFMpegVideoSegmenter) RTMPToHLS(ctx context.Context, cleanup bool) erro
 	return ret
 }
 
-//PollSegment monitors the filesystem and returns a new segment as it becomes available
-func (s *FFMpegVideoSegmenter) PollSegment(ctx context.Context) (*VideoSegment, error) {
-	var length time.Duration
-	curTsfn := s.WorkDir + "/" + s.StrmID + "_" + strconv.Itoa(s.curSegment) + ".ts"
-	nextTsfn := s.WorkDir + "/" + s.StrmID + "_" + strconv.Itoa(s.curSegment+1) + ".ts"
-	seg, err := s.pollSegment(ctx, curTsfn, nextTsfn, time.Millisecond*100)
+// GetVideoSegment gets the next video segment using filesystem notifications if
+// available otherwise by polling the filesystem.
+func (s *FFMpegVideoSegmenter) GetVideoSegment(ctx context.Context) (*VideoSegment, error) {
+	if s.watcher == nil {
+		return s.PollSegment(ctx)
+	}
+
+	return s.NotifySegment(ctx)
+}
+
+// NotifySegment watches the filesystem and returns new segments as it becomes avilable
+func (s *FFMpegVideoSegmenter) NotifySegment(ctx context.Context) (*VideoSegment, error) {
+	curTsfn := fmt.Sprintf("%s/%s_%d.ts", s.WorkDir, s.StrmID, s.curSegment)
+	nextTsfn := fmt.Sprintf("%s%s_%d.ts", s.WorkDir, s.StrmID, s.curSegment+1)
+	s.watcher.Add(nextTsfn)
+	defer func() {
+		s.watcher.Remove(nextTsfn)
+	}()
+
+	for {
+		select {
+		case event, ok := <-s.watcher.Events:
+			if !ok {
+				continue
+			}
+
+			// Check for create on next segment file
+			if event.Op&fsnotify.Create == fsnotify.Create {
+				// We should have curTsfn created and populated, read its content
+				seg, err := readFileFully(curTsfn)
+				if err != nil {
+					return nil, err
+				}
+
+				return s.newVideoSegment(seg)
+			}
+		case err, ok := <-s.watcher.Errors:
+			if !ok {
+				return nil, err
+			}
+
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+}
+
+func readFileFully(name string) ([]byte, error) {
+	if _, err := os.Stat(name); err != nil {
+		return nil, err
+	}
+
+	content, err := ioutil.ReadFile(name)
 	if err != nil {
 		return nil, err
 	}
 
+	return content, err
+}
+
+func (s *FFMpegVideoSegmenter) newVideoSegment(seg []byte) (*VideoSegment, error) {
 	name := s.StrmID + "_" + strconv.Itoa(s.curSegment) + ".ts"
 	plfn := fmt.Sprintf("%s/%s.m3u8", s.WorkDir, s.StrmID)
+	var length time.Duration
+	var err error
 
 	for i := 0; i < PlaylistRetryCount; i++ {
 		pl, _ := m3u8.NewMediaPlaylist(uint(s.curSegment+1), uint(s.curSegment+1))
@@ -127,6 +188,18 @@ func (s *FFMpegVideoSegmenter) PollSegment(ctx context.Context) (*VideoSegment, 
 	s.curSegment = s.curSegment + 1
 	// glog.Infof("Segment: %v, len:%v", name, len(seg))
 	return &VideoSegment{Codec: av.H264, Format: stream.HLS, Length: length, Data: seg, Name: name, SeqNo: uint64(s.curSegment - 1)}, err
+}
+
+//PollSegment monitors the filesystem and returns a new segment as it becomes available
+func (s *FFMpegVideoSegmenter) PollSegment(ctx context.Context) (*VideoSegment, error) {
+	curTsfn := s.WorkDir + "/" + s.StrmID + "_" + strconv.Itoa(s.curSegment) + ".ts"
+	nextTsfn := s.WorkDir + "/" + s.StrmID + "_" + strconv.Itoa(s.curSegment+1) + ".ts"
+	seg, err := s.pollSegment(ctx, curTsfn, nextTsfn, time.Millisecond*100)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.newVideoSegment(seg)
 }
 
 //PollPlaylist monitors the filesystem and returns a new playlist as it becomes available
