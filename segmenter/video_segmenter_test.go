@@ -20,14 +20,14 @@ import (
 	"strings"
 
 	"github.com/golang/glog"
-	"github.com/livepeer/lpms/ffmpeg"
-	"github.com/livepeer/lpms/stream"
-	"github.com/livepeer/lpms/vidplayer"
-	"github.com/livepeer/m3u8"
 	"github.com/livepeer/joy4/av"
 	"github.com/livepeer/joy4/av/avutil"
 	"github.com/livepeer/joy4/format"
 	"github.com/livepeer/joy4/format/rtmp"
+	"github.com/livepeer/lpms/ffmpeg"
+	"github.com/livepeer/lpms/stream"
+	"github.com/livepeer/lpms/vidplayer"
+	"github.com/livepeer/m3u8"
 )
 
 type TestStream struct{}
@@ -71,7 +71,7 @@ func (s *TestStream) WriteRTMPToStream(ctx context.Context, src av.DemuxCloser) 
 func (s *TestStream) WriteHLSPlaylistToStream(pl m3u8.MediaPlaylist) error                { return nil }
 func (s *TestStream) WriteHLSSegmentToStream(seg stream.HLSSegment) error                 { return nil }
 func (s *TestStream) ReadHLSFromStream(ctx context.Context, buffer stream.HLSMuxer) error { return nil }
-func (s *TestStream) ReadHLSSegment() (stream.HLSSegment, error)                          { return stream.HLSSegment{}, nil }
+func (s *TestStream) ReadHLSSegment() (stream.HLSSegment, error)                          { return NewHLSSegment(nil), nil }
 func (s *TestStream) Width() int                                                          { return 0 }
 func (s *TestStream) Height() int                                                         { return 0 }
 func (s *TestStream) Close()                                                              {}
@@ -189,7 +189,8 @@ func TestSegmenter(t *testing.T) {
 			t.Errorf("Expecting SeqNo %v, got %v", uint(i), seg.SeqNo)
 		}
 
-		segLen := len(seg.Data)
+		data, err := seg.Data()
+		segLen := len(data)
 		if segLen < 20000 {
 			t.Errorf("File size is too small: %v", segLen)
 		}

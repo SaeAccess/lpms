@@ -37,12 +37,33 @@ type SegmenterOptions struct {
 
 // VideoSegment defines a segment of a video file or stream
 type VideoSegment struct {
-	Codec  av.CodecType
-	Format stream.VideoFormat
-	Length time.Duration
-	Data   []byte
-	Name   string
-	SeqNo  uint64
+	Codec    av.CodecType
+	Format   stream.VideoFormat
+	Length   time.Duration
+	Name     string
+	SeqNo    uint64
+	Filename string // filename for the video segment
+
+	data     []byte
+	lazydata func() ([]byte, error)
+}
+
+// Data provides lazy loading of data, segment file should be deleted
+func (vs *VideoSegment) Data() ([]byte, error) {
+	if vs.data == nil {
+		seg, err := vs.lazydata()
+		if err != nil {
+			return nil, err
+		}
+		vs.data = seg
+	}
+
+	return vs.data, nil
+}
+
+// Cleanup removes the video segment file
+func (vs *VideoSegment) Cleanup() {
+	os.Remove(vs.Filename)
 }
 
 // VideoPlaylist defines a playlist for a specific video format
@@ -78,6 +99,9 @@ type FFMpegVideoSegmenter struct {
 
 // SegmentRecvChan is a receive channel for *VideoSegments
 type SegmentRecvChan <-chan *VideoSegment
+
+// CleanupFunc function
+type CleanupFunc func()
 
 // Set of directory watchers
 var dirWatchers *dirWatcherMap = &dirWatcherMap{}
@@ -136,12 +160,12 @@ func (s *FFMpegVideoSegmenter) checkComplete(event fsnotify.Event) (int, bool) {
 
 // RTMPToHLSSegment segments an RTMP stream into HLS segments.  Segments are returned
 // asynchronously via the SegmentRecvChan
-func (s *FFMpegVideoSegmenter) RTMPToHLSSegment(ctx context.Context, cleanup bool) (SegmentRecvChan, error) {
+func (s *FFMpegVideoSegmenter) RTMPToHLSSegment(ctx context.Context) (SegmentRecvChan, CleanupFunc, error) {
 	// Set up local workdir
 	if _, err := os.Stat(s.WorkDir); os.IsNotExist(err) {
 		err := os.Mkdir(s.WorkDir, 0700)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 
@@ -164,17 +188,7 @@ func (s *FFMpegVideoSegmenter) RTMPToHLSSegment(ctx context.Context, cleanup boo
 		if event.Op&fsnotify.Create == fsnotify.Create {
 			segment, ok := s.checkComplete(event)
 			if ok {
-				name := fmt.Sprintf("%s/%s_%d.ts", s.WorkDir, s.StrmID, segment)
-				// TODO dont really want to read the segment data here. Send back
-				// its filename
-				seg, err := readFileFully(name)
-				if err != nil {
-					// log error
-					glog.Errorf("Error reading HLS video segment file, error: %v", err)
-					return
-				}
-
-				vs, err := s.newVideoSegment(seg, segment)
+				vs, err := s.newVideoSegment(segment)
 				if err != nil {
 					// log error
 					glog.Errorf("Error creating new video segment, error: %v", err)
@@ -186,6 +200,7 @@ func (s *FFMpegVideoSegmenter) RTMPToHLSSegment(ctx context.Context, cleanup boo
 		}
 	}
 
+	// Directory to watch
 	hn := fmt.Sprintf("%s/%s", s.WorkDir, s.StrmID)
 	s.watcher.AddHandler(hn, handler)
 	go func() {
@@ -198,9 +213,15 @@ func (s *FFMpegVideoSegmenter) RTMPToHLSSegment(ctx context.Context, cleanup boo
 			glog.V(4).Infof("RTMP to HLS segmenting completed successfully")
 		}
 
-		if cleanup {
-			s.Cleanup()
-		}
+		// if the stream was terminated we could have an outstanding segment
+		// that didn't get detected because we won't have anymore segment files
+		// created to cause the event to trigger completion of prior segment file
+		// Fabricate create event this to cause completion of current segment
+		name := fmt.Sprintf("%s/%s_%d.ts", s.WorkDir, s.StrmID, s.curSegment+1)
+		handler(fsnotify.Event{
+			Name: name,
+			Op:   fsnotify.Create,
+		})
 
 		// Remove stream template from dir watcher
 		s.watcher.RemoveHandler(hn)
@@ -210,7 +231,12 @@ func (s *FFMpegVideoSegmenter) RTMPToHLSSegment(ctx context.Context, cleanup boo
 		return
 	}()
 
-	return s.segChan, nil
+	// The cleanup function
+	cfunc := func() {
+		s.Cleanup()
+	}
+
+	return s.segChan, cfunc, nil
 }
 
 func readFileFully(name string) ([]byte, error) {
@@ -226,8 +252,8 @@ func readFileFully(name string) ([]byte, error) {
 	return content, err
 }
 
-func (s *FFMpegVideoSegmenter) newVideoSegment(seg []byte, segment int) (*VideoSegment, error) {
-	name := s.StrmID + "_" + strconv.Itoa(segment) + ".ts"
+func (s *FFMpegVideoSegmenter) newVideoSegment(segment int) (*VideoSegment, error) {
+	name := fmt.Sprintf("%s_%d.ts", s.StrmID, segment)
 	plfn := fmt.Sprintf("%s/%s.m3u8", s.WorkDir, s.StrmID)
 	var length time.Duration
 	var err error
@@ -256,7 +282,25 @@ func (s *FFMpegVideoSegmenter) newVideoSegment(seg []byte, segment int) (*VideoS
 	}
 
 	// glog.Infof("Segment: %v, len:%v", name, len(seg))
-	return &VideoSegment{Codec: av.H264, Format: stream.HLS, Length: length, Data: seg, Name: name, SeqNo: uint64(segment)}, err
+	filename := fmt.Sprintf("%s/%s", s.WorkDir, name)
+	return &VideoSegment{
+		Codec:    av.H264,
+		Format:   stream.HLS,
+		Length:   length,
+		Name:     name,
+		SeqNo:    uint64(segment),
+		Filename: filename,
+		lazydata: func() ([]byte, error) {
+			seg, err := readFileFully(filename)
+			if err != nil {
+				// log error
+				glog.Errorf("Error reading HLS video segment file, error: %v", err)
+				return nil, err
+			}
+
+			return seg, nil
+		},
+	}, err
 }
 
 //RTMPToHLS invokes FFMpeg to do the segmenting. This method blocks until the segmenter exits.
@@ -316,8 +360,7 @@ func (s *FFMpegVideoSegmenter) PollSegment(ctx context.Context) (*VideoSegment, 
 
 	s.curSegment = s.curSegment + 1
 	// glog.Infof("Segment: %v, len:%v", name, len(seg))
-	return &VideoSegment{Codec: av.H264, Format: stream.HLS, Length: length, Data: seg, Name: name, SeqNo: uint64(s.curSegment - 1)}, err
-
+	return &VideoSegment{Codec: av.H264, Format: stream.HLS, Length: length, data: seg, Name: name, SeqNo: uint64(s.curSegment - 1)}, err
 }
 
 //PollPlaylist monitors the filesystem and returns a new playlist as it becomes available
@@ -594,7 +637,7 @@ func dumpKeys(dw *dirWatcher) {
 
 // Close closes the directory watcher.
 func (dw *dirWatcher) Close() {
-	dw.Close()
+	dw.watcher.Close()
 }
 
 // dirWatcherMap provides a concurrent map of dirWatcher indexed by work dir

@@ -3,8 +3,8 @@ package stream
 import (
 	"context"
 
-	"github.com/livepeer/m3u8"
 	"github.com/livepeer/joy4/av"
+	"github.com/livepeer/m3u8"
 )
 
 type AppData interface {
@@ -41,9 +41,9 @@ type HLSVideoStream interface {
 	VideoStream
 	GetStreamPlaylist() (*m3u8.MediaPlaylist, error)
 	// GetStreamVariant() *m3u8.Variant
-	GetHLSSegment(segName string) (*HLSSegment, error)
-	AddHLSSegment(seg *HLSSegment) error
-	SetSubscriber(f func(seg *HLSSegment, eof bool))
+	GetHLSSegment(segName string) (HLSSegment, error)
+	AddHLSSegment(seg HLSSegment) error
+	SetSubscriber(f func(seg HLSSegment, eof bool))
 	End()
 }
 

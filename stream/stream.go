@@ -69,12 +69,24 @@ func (b *streamBuffer) len() int64 {
 	return b.q.Len()
 }
 
+// HLSSegment defines the interface for HLS segments
 //We couldn't just use the m3u8 definition
-type HLSSegment struct {
-	SeqNo    uint64
-	Name     string
-	Data     []byte
-	Duration float64
+// Make this an interface, gives better control over copying of VideoSegment
+// data and also reading of video segment files.
+type HLSSegment interface {
+	SeqNo() uint64
+	Name() string
+	Data() ([]byte, error)
+	Duration() float64
+	SegmentFileName() string
+
+	// Transform segment in a playlist segment
+	MediaSegment() *m3u8.MediaSegment
+	Cleanup()
+
+	// WithNewFileName creates a copy of the segment with data content from
+	// the supplied filename
+	WithNewFileName(filename string) HLSSegment
 }
 
 //Compare playlists by segments
