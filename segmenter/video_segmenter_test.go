@@ -26,6 +26,7 @@ import (
 	"github.com/livepeer/joy4/format/rtmp"
 	"github.com/livepeer/lpms/ffmpeg"
 	"github.com/livepeer/lpms/stream"
+	rtmpstream "github.com/livepeer/lpms/stream/rtmp"
 	"github.com/livepeer/lpms/vidplayer"
 	"github.com/livepeer/m3u8"
 )
@@ -68,13 +69,13 @@ func (s *TestStream) ReadRTMPFromStream(ctx context.Context, dst av.MuxCloser) (
 func (s *TestStream) WriteRTMPToStream(ctx context.Context, src av.DemuxCloser) (chan struct{}, error) {
 	return nil, nil
 }
-func (s *TestStream) WriteHLSPlaylistToStream(pl m3u8.MediaPlaylist) error                { return nil }
-func (s *TestStream) WriteHLSSegmentToStream(seg stream.HLSSegment) error                 { return nil }
-func (s *TestStream) ReadHLSFromStream(ctx context.Context, buffer stream.HLSMuxer) error { return nil }
-func (s *TestStream) ReadHLSSegment() (stream.HLSSegment, error)                          { return NewHLSSegment(nil), nil }
-func (s *TestStream) Width() int                                                          { return 0 }
-func (s *TestStream) Height() int                                                         { return 0 }
-func (s *TestStream) Close()                                                              {}
+func (s *TestStream) WriteHLSPlaylistToStream(pl m3u8.MediaPlaylist) error         { return nil }
+func (s *TestStream) WriteHLSSegmentToStream(seg HLSSegment) error                 { return nil }
+func (s *TestStream) ReadHLSFromStream(ctx context.Context, buffer HLSMuxer) error { return nil }
+func (s *TestStream) ReadHLSSegment() (HLSSegment, error)                          { return NewHLSSegment(nil), nil }
+func (s *TestStream) Width() int                                                   { return 0 }
+func (s *TestStream) Height() int                                                  { return 0 }
+func (s *TestStream) Close()                                                       {}
 
 func RunRTMPToHLS(vs *FFMpegVideoSegmenter, ctx context.Context) error {
 	// hack cuz listener might not be ready
@@ -116,7 +117,7 @@ func TestSegmenter(t *testing.T) {
 	player := vidplayer.NewVidPlayer(server, "", nil)
 
 	player.HandleRTMPPlay(
-		func(url *url.URL) (stream.RTMPVideoStream, error) {
+		func(url *url.URL) (rtmpstream.RTMPVideoStream, error) {
 			return strm, nil
 		})
 
@@ -261,7 +262,7 @@ func TestSetStartSeq(t *testing.T) {
 	player := vidplayer.NewVidPlayer(server, "", nil)
 
 	player.HandleRTMPPlay(
-		func(url *url.URL) (stream.RTMPVideoStream, error) {
+		func(url *url.URL) (rtmpstream.RTMPVideoStream, error) {
 			return strm, nil
 		})
 

@@ -9,9 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/livepeer/lpms/stream"
 	"github.com/livepeer/joy4/av/pubsub"
 	joy4rtmp "github.com/livepeer/joy4/format/rtmp"
+	"github.com/livepeer/lpms/stream"
+	"github.com/livepeer/lpms/stream/rtmp"
 )
 
 type testStream string
@@ -35,13 +36,13 @@ func TestListener(t *testing.T) {
 			return newTestStream()
 		},
 		//gotStream
-		func(url *url.URL, rtmpStrm stream.RTMPVideoStream) (err error) {
+		func(url *url.URL, rtmpStrm rtmp.RTMPVideoStream) (err error) {
 			//Read the stream into q
 			go rtmpStrm.ReadRTMPFromStream(context.Background(), q)
 			return nil
 		},
 		//endStream
-		func(url *url.URL, rtmpStrm stream.RTMPVideoStream) error {
+		func(url *url.URL, rtmpStrm rtmp.RTMPVideoStream) error {
 			if rtmpStrm.GetStreamID() != "testID" {
 				t.Errorf("Expecting 'testID', found %v", rtmpStrm.GetStreamID())
 			}
@@ -86,11 +87,11 @@ func TestListenerError(t *testing.T) {
 			return newTestStream()
 		},
 		//gotStream
-		func(url *url.URL, rtmpStrm stream.RTMPVideoStream) error {
+		func(url *url.URL, rtmpStrm rtmp.RTMPVideoStream) error {
 			return fmt.Errorf("Should fail")
 		},
 		//endStream
-		func(url *url.URL, rtmpStrm stream.RTMPVideoStream) error {
+		func(url *url.URL, rtmpStrm rtmp.RTMPVideoStream) error {
 			mu.Lock()
 			defer mu.Unlock()
 			failures++
@@ -128,11 +129,11 @@ func TestListenerEmptyStreamID(t *testing.T) {
 			return newTestStream()
 		},
 		//gotStream
-		func(url *url.URL, rtmpStrm stream.RTMPVideoStream) error {
+		func(url *url.URL, rtmpStrm rtmp.RTMPVideoStream) error {
 			return nil
 		},
 		//endStream
-		func(url *url.URL, rtmpStrm stream.RTMPVideoStream) error {
+		func(url *url.URL, rtmpStrm rtmp.RTMPVideoStream) error {
 			return nil
 		})
 

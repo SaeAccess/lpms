@@ -1,9 +1,40 @@
 package segmenter
 
 import (
-	"github.com/livepeer/lpms/stream"
+	"context"
+
 	"github.com/livepeer/m3u8"
 )
+
+type HLSDemuxer interface {
+	PollPlaylist(ctx context.Context) (m3u8.MediaPlaylist, error)
+	WaitAndPopSegment(ctx context.Context, name string) ([]byte, error)
+	WaitAndGetSegment(ctx context.Context, name string) ([]byte, error)
+}
+
+type HLSMuxer interface {
+	WriteSegment(seqNo uint64, name string, duration float64, s []byte) error
+}
+
+// HLSSegment defines the interface for HLS segments
+// We couldn't just use the m3u8 definition
+// Make this an interface, gives better control over copying of VideoSegment
+// data and also reading of video segment files.
+type HLSSegment interface {
+	SeqNo() uint64
+	Name() string
+	Data() ([]byte, error)
+	Duration() float64
+	SegmentFileName() string
+
+	// Transform segment in a playlist segment
+	MediaSegment() *m3u8.MediaSegment
+	Cleanup()
+
+	// WithNewFileName creates a copy of the segment with data content from
+	// the supplied filename
+	WithNewFileName(filename string) HLSSegment
+}
 
 // hlsVideoSegment wraps a Segmenter VideoSegment to provide the HLSSegment interface
 // without copying the segment and provide lifecycle around the sement data file
@@ -12,7 +43,7 @@ type hlsVideoSegment struct {
 }
 
 // NewHLSSegment transforms a video segment into a HLSSegment
-func NewHLSSegment(seg *VideoSegment) stream.HLSSegment {
+func NewHLSSegment(seg *VideoSegment) HLSSegment {
 	return &hlsVideoSegment{segment: seg}
 }
 
@@ -32,7 +63,7 @@ func (s hlsVideoSegment) MediaSegment() *m3u8.MediaSegment {
 
 func (s hlsVideoSegment) Cleanup() { s.segment.Cleanup() }
 
-func (s hlsVideoSegment) WithNewFileName(filename string) stream.HLSSegment {
+func (s hlsVideoSegment) WithNewFileName(filename string) HLSSegment {
 	// Copy this segment then set new filename
 	vs := *s.segment
 	vs.Filename = filename

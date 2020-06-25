@@ -10,9 +10,9 @@ import (
 
 	"net/url"
 
-	"github.com/livepeer/lpms/stream"
-	"github.com/livepeer/m3u8"
 	joy4rtmp "github.com/livepeer/joy4/format/rtmp"
+	"github.com/livepeer/lpms/stream/rtmp"
+	"github.com/livepeer/m3u8"
 )
 
 func TestRTMP(t *testing.T) {
@@ -21,7 +21,7 @@ func TestRTMP(t *testing.T) {
 
 	//Handler should get called
 	handler1Called := false
-	player.rtmpPlayHandler = func(url *url.URL) (stream.RTMPVideoStream, error) {
+	player.rtmpPlayHandler = func(url *url.URL) (rtmp.RTMPVideoStream, error) {
 		handler1Called = true
 		return nil, fmt.Errorf("error")
 	}
@@ -33,7 +33,7 @@ func TestRTMP(t *testing.T) {
 
 	//Re-assign handler, it should still get called
 	handler2Called := false
-	player.rtmpPlayHandler = func(url *url.URL) (stream.RTMPVideoStream, error) {
+	player.rtmpPlayHandler = func(url *url.URL) (rtmp.RTMPVideoStream, error) {
 		handler2Called = true
 		return nil, fmt.Errorf("error")
 	}

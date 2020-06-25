@@ -17,9 +17,9 @@ import (
 	"time"
 
 	"github.com/golang/glog"
-	"github.com/livepeer/lpms/stream"
-	"github.com/livepeer/m3u8"
 	joy4rtmp "github.com/livepeer/joy4/format/rtmp"
+	"github.com/livepeer/lpms/stream/rtmp"
+	"github.com/livepeer/m3u8"
 )
 
 var ErrNotFound = errors.New("ErrNotFound")
@@ -32,12 +32,12 @@ var PlaylistWaittime = 6 * time.Second
 //VidPlayer is the module that handles playing video. For now we only support RTMP and HLS play.
 type VidPlayer struct {
 	RtmpServer      *joy4rtmp.Server
-	rtmpPlayHandler func(url *url.URL) (stream.RTMPVideoStream, error)
+	rtmpPlayHandler func(url *url.URL) (rtmp.RTMPVideoStream, error)
 	VodPath         string
 	mux             *http.ServeMux
 }
 
-func defaultRtmpPlayHandler(url *url.URL) (stream.RTMPVideoStream, error) { return nil, ErrRTMP }
+func defaultRtmpPlayHandler(url *url.URL) (rtmp.RTMPVideoStream, error) { return nil, ErrRTMP }
 
 //NewVidPlayer creates a new video player
 func NewVidPlayer(rtmpS *joy4rtmp.Server, vodPath string, mux *http.ServeMux) *VidPlayer {
@@ -53,7 +53,7 @@ func NewVidPlayer(rtmpS *joy4rtmp.Server, vodPath string, mux *http.ServeMux) *V
 
 //HandleRTMPPlay is the handler when there is a RTMP request for a video. The source should write
 //into the MuxCloser. The easiest way is through avutil.Copy.
-func (s *VidPlayer) HandleRTMPPlay(getStream func(url *url.URL) (stream.RTMPVideoStream, error)) error {
+func (s *VidPlayer) HandleRTMPPlay(getStream func(url *url.URL) (rtmp.RTMPVideoStream, error)) error {
 	s.rtmpPlayHandler = getStream
 	return nil
 }

@@ -1,8 +1,9 @@
-package stream
+package hls
 
 import (
 	"testing"
 
+	"github.com/livepeer/lpms/segmenter"
 	"github.com/livepeer/m3u8"
 )
 
@@ -16,29 +17,34 @@ func TestAddAndRemove(t *testing.T) {
 	if len(ml.Variants) != 1 {
 		t.Errorf("Expecting 1 variant, but got: %v", ml.Variants)
 	}
-	segs := make([]*HLSSegment, 0)
+	segs := make([]segmenter.HLSSegment, 0)
 	eofRes := false
-	strm.SetSubscriber(func(seg *HLSSegment, eof bool) {
+	strm.SetSubscriber(func(seg segmenter.HLSSegment, eof bool) {
 		segs = append(segs, seg)
 		eofRes = eof
 	})
 
 	//Add to the stream
-	if err = strm.AddHLSSegment(&HLSSegment{Name: "test01.ts"}); err != nil {
+	seg := segmenter.NewHLSSegment(&segmenter.VideoSegment{Name: "test01.ts"})
+	if err = strm.AddHLSSegment(seg); err != nil {
 		t.Errorf("Error adding segment: %v", err)
 	}
-	if err = strm.AddHLSSegment(&HLSSegment{Name: "test02.ts"}); err != nil {
+
+	seg = segmenter.NewHLSSegment(&segmenter.VideoSegment{Name: "test02.ts"})
+	if err = strm.AddHLSSegment(seg); err != nil {
 		t.Errorf("Error adding segment: %v", err)
 	}
-	if err = strm.AddHLSSegment(&HLSSegment{Name: "test03.ts"}); err != nil {
+
+	seg = segmenter.NewHLSSegment(&segmenter.VideoSegment{Name: "test03.ts"})
+	if err = strm.AddHLSSegment(seg); err != nil {
 		t.Errorf("Error adding segment: %v", err)
 	}
-	seg, err := strm.GetHLSSegment("test01.ts")
+	seg, err = strm.GetHLSSegment("test01.ts")
 	if err != nil {
 		t.Errorf("Error getting segment: %v", err)
 	}
-	if seg.Name != "test01.ts" {
-		t.Errorf("Expecting test01.ts, got %v", seg.Name)
+	if seg.Name() != "test01.ts" {
+		t.Errorf("Expecting test01.ts, got %v", seg.Name())
 	}
 
 	//Make sure the subscriber function is called
@@ -106,23 +112,35 @@ func TestWindowSize(t *testing.T) {
 
 	//Add segments to the new stream stream, make sure it respects the window size
 	vstrm, err := manifest.GetVideoStream("test2")
-	segs := []*HLSSegment{}
-	vstrm.SetSubscriber(func(seg *HLSSegment, eof bool) {
+	segs := []segmenter.HLSSegment{}
+	vstrm.SetSubscriber(func(seg segmenter.HLSSegment, eof bool) {
 		segs = append(segs, seg)
 	})
 	if err != nil {
 		t.Errorf("Error: %v", err)
 	}
-	if err := vstrm.AddHLSSegment(&HLSSegment{SeqNo: 1, Name: "seg1.ts", Data: []byte("hello"), Duration: 8}); err != nil {
+	seg := segmenter.NewHLSSegment(&segmenter.VideoSegment{SeqNo: 1, Name: "seg1.ts", Length: 8, Lazydata: func() ([]byte, error) {
+		return []byte("hello"), nil
+	}})
+	if err := vstrm.AddHLSSegment(seg); err != nil {
 		t.Errorf("Error adding HLS Segment: %v", err)
 	}
-	if err = vstrm.AddHLSSegment(&HLSSegment{SeqNo: 2, Name: "seg2.ts", Data: []byte("hello"), Duration: 8}); err != nil {
+	seg = segmenter.NewHLSSegment(&segmenter.VideoSegment{SeqNo: 2, Name: "seg2.ts", Length: 8, Lazydata: func() ([]byte, error) {
+		return []byte("hello"), nil
+	}})
+	if err = vstrm.AddHLSSegment(seg); err != nil {
 		t.Errorf("Error adding HLS Segment: %v", err)
 	}
-	if err = vstrm.AddHLSSegment(&HLSSegment{SeqNo: 3, Name: "seg3.ts", Data: []byte("hello"), Duration: 8}); err != nil {
+	seg = segmenter.NewHLSSegment(&segmenter.VideoSegment{SeqNo: 3, Name: "seg3.ts", Length: 8, Lazydata: func() ([]byte, error) {
+		return []byte("hello"), nil
+	}})
+	if err = vstrm.AddHLSSegment(seg); err != nil {
 		t.Errorf("Error adding HLS Segment: %v", err)
 	}
-	if err = vstrm.AddHLSSegment(&HLSSegment{SeqNo: 4, Name: "seg4.ts", Data: []byte("hello"), Duration: 8}); err != nil {
+	seg = segmenter.NewHLSSegment(&segmenter.VideoSegment{SeqNo: 4, Name: "seg4.ts", Length: 8, Lazydata: func() ([]byte, error) {
+		return []byte("hello"), nil
+	}})
+	if err = vstrm.AddHLSSegment(seg); err != nil {
 		t.Errorf("Error adding HLS Segment: %v", err)
 	}
 	pltmp, err := vstrm.GetStreamPlaylist()

@@ -11,6 +11,7 @@ import (
 	"github.com/golang/glog"
 	"github.com/livepeer/lpms/core"
 	"github.com/livepeer/lpms/stream"
+	rtmpstream "github.com/livepeer/lpms/stream/rtmp"
 )
 
 type exampleStream string
@@ -45,13 +46,13 @@ func main() {
 			return exampleStream(randString(10))
 		},
 
-		func(url *url.URL, rs stream.RTMPVideoStream) (err error) {
+		func(url *url.URL, rs rtmpstream.RTMPVideoStream) (err error) {
 			streamFormat := rs.GetStreamFormat()
 			glog.Infof("Stream is in play!: string format:%v", streamFormat)
 			return nil
 		},
 
-		func(url *url.URL, rtmpStrm stream.RTMPVideoStream) error {
+		func(url *url.URL, rtmpStrm rtmpstream.RTMPVideoStream) error {
 			width := rtmpStrm.Width()
 			h := rtmpStrm.Height()
 			glog.Infof("height and width: %v , %v", h, width)

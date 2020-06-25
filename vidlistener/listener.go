@@ -6,9 +6,10 @@ import (
 	"time"
 
 	"github.com/golang/glog"
+	joy4rtmp "github.com/livepeer/joy4/format/rtmp"
 	"github.com/livepeer/lpms/segmenter"
 	"github.com/livepeer/lpms/stream"
-	joy4rtmp "github.com/livepeer/joy4/format/rtmp"
+	"github.com/livepeer/lpms/stream/rtmp"
 )
 
 var segOptions = segmenter.SegmenterOptions{SegLength: time.Second * 2}
@@ -28,8 +29,8 @@ type VidListener struct {
 //endStream is called when the stream ends.  It gives you access to the stream.
 func (self *VidListener) HandleRTMPPublish(
 	makeStreamID func(url *url.URL) (strmID stream.AppData),
-	gotStream func(url *url.URL, rtmpStrm stream.RTMPVideoStream) error,
-	endStream func(url *url.URL, rtmpStrm stream.RTMPVideoStream) error) {
+	gotStream func(url *url.URL, rtmpStrm rtmp.RTMPVideoStream) error,
+	endStream func(url *url.URL, rtmpStrm rtmp.RTMPVideoStream) error) {
 
 	if self.RtmpServer != nil {
 		self.RtmpServer.HandlePublish = func(conn *joy4rtmp.Conn) {
@@ -40,7 +41,7 @@ func (self *VidListener) HandleRTMPPublish(
 				conn.Close()
 				return
 			}
-			s := stream.NewBasicRTMPVideoStream(strmID)
+			s := rtmp.NewBasicRTMPVideoStream(strmID)
 			ctx, cancel := context.WithCancel(context.Background())
 			eof, err := s.WriteRTMPToStream(ctx, conn)
 			if err != nil {

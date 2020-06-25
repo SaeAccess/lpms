@@ -1,4 +1,4 @@
-package stream
+package hls
 
 import (
 	"errors"
@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/golang/glog"
+	"github.com/livepeer/lpms/stream"
 	"github.com/livepeer/m3u8"
 )
 
@@ -30,7 +31,7 @@ func NewBasicHLSVideoManifest(id string) *BasicHLSVideoManifest {
 
 func (m *BasicHLSVideoManifest) GetManifestID() string { return m.id }
 
-func (m *BasicHLSVideoManifest) GetVideoFormat() VideoFormat { return HLS }
+func (m *BasicHLSVideoManifest) GetVideoFormat() stream.VideoFormat { return stream.HLS }
 
 func (m *BasicHLSVideoManifest) GetManifest() (*m3u8.MasterPlaylist, error) {
 	return m.manifestCache, nil

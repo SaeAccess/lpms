@@ -22,6 +22,8 @@ import (
 	"github.com/livepeer/lpms/ffmpeg"
 	"github.com/livepeer/lpms/segmenter"
 	"github.com/livepeer/lpms/stream"
+	hlsstream "github.com/livepeer/lpms/stream/hls"
+	rtmpstream "github.com/livepeer/lpms/stream/rtmp"
 	"github.com/livepeer/m3u8"
 )
 
@@ -74,9 +76,9 @@ func main() {
 	lpms := core.New(&core.LPMSOpts{WorkDir: fmt.Sprintf("%v/.tmp", dir)})
 
 	//Streams needed for transcoding:
-	var rtmpStrm stream.RTMPVideoStream
-	var hlsStrm stream.HLSVideoStream
-	var manifest stream.HLSVideoManifest
+	var rtmpStrm rtmpstream.RTMPVideoStream
+	var hlsStrm hlsstream.HLSVideoStream
+	var manifest hlsstream.HLSVideoManifest
 	var cancelSeg context.CancelFunc
 
 	lpms.HandleRTMPPublish(
@@ -87,13 +89,13 @@ func main() {
 		},
 
 		//gotStream
-		func(url *url.URL, rs stream.RTMPVideoStream) (err error) {
+		func(url *url.URL, rs rtmpstream.RTMPVideoStream) (err error) {
 			//Store the stream
 			glog.Infof("Got RTMP stream: %v", rs.GetStreamID())
 			rtmpStrm = rs
 
 			// //Segment the video into HLS (If we need multiple outlets for the HLS stream, we'd need to create a buffer.  But here we only have one outlet for the transcoder)
-			hlsStrm = stream.NewBasicHLSVideoStream(randString(10), 3)
+			hlsStrm = hlsstream.NewBasicHLSVideoStream(randString(10), 3)
 			// var subscriber func(*stream.HLSSegment, bool)
 			// subscriber, err = transcode(hlsStrm)
 			// if err != nil {
@@ -121,7 +123,7 @@ func main() {
 			return nil
 		},
 		//endStream
-		func(url *url.URL, rtmpStrm stream.RTMPVideoStream) error {
+		func(url *url.URL, rtmpStrm rtmpstream.RTMPVideoStream) error {
 			glog.Infof("Ending stream for %v", hlsStrm.GetStreamID())
 			//Remove the stream
 			cancelSeg()
@@ -154,7 +156,7 @@ func main() {
 			for time.Since(start) < HLSWaitTime {
 				pl, err := hlsStrm.GetStreamPlaylist()
 				if err != nil || pl == nil || pl.Segments == nil || len(pl.Segments) <= 0 || pl.Segments[0] == nil || pl.Segments[0].URI == "" {
-					if err == stream.ErrEOF {
+					if err == hlsstream.ErrEOF {
 						return nil, err
 					}
 
@@ -173,12 +175,12 @@ func main() {
 				glog.Errorf("Error getting segment: %v", err)
 				return nil, err
 			}
-			return seg.Data, nil
+			return seg.Data()
 		})
 
 	lpms.HandleRTMPPlay(
 		//getStream
-		func(url *url.URL) (stream.RTMPVideoStream, error) {
+		func(url *url.URL) (rtmpstream.RTMPVideoStream, error) {
 			glog.Infof("Got req: %v", url.Path)
 			if rtmpStrm != nil {
 				strmID := parseStreamID(url.Path)
@@ -192,7 +194,7 @@ func main() {
 	lpms.Start(context.Background())
 }
 
-func transcode(hlsStream stream.HLSVideoStream) (func(*stream.HLSSegment, bool), error) {
+func transcode(hlsStream hlsstream.HLSVideoStream) (func(segmenter.HLSSegment, bool), error) {
 	//Create Transcoder
 	profiles := []ffmpeg.VideoProfile{
 		ffmpeg.P144p30fps16x9,
@@ -211,7 +213,7 @@ func transcode(hlsStream stream.HLSVideoStream) (func(*stream.HLSSegment, bool),
 	// 	// hlsStream.AddVariant(strmID, &m3u8.Variant{URI: fmt.Sprintf("%v.m3u8", strmID), Chunklist: pl, VariantParams: transcoder.TranscodeProfileToVariantParams(p)})
 	// }
 
-	subscriber := func(seg *stream.HLSSegment, eof bool) {
+	subscriber := func(seg segmenter.HLSSegment, eof bool) {
 		//If we get a new video segment for the original HLS stream, do the transcoding.
 		// glog.Infof("Got seg: %v", seg.Name)
 		// if strmID == hlsStream.GetStreamID() {
@@ -220,7 +222,8 @@ func transcode(hlsStream stream.HLSVideoStream) (func(*stream.HLSSegment, bool),
 			glog.Errorf("Unable to get tempdir, %v", err)
 		}
 		defer os.Remove(file.Name())
-		if _, err = file.Write(seg.Data); err != nil {
+		data, _ := seg.Data()
+		if _, err = file.Write(data); err != nil {
 			glog.Errorf("Unable to write temp file %v", err)
 		}
 		if err = file.Close(); err != nil {
@@ -236,7 +239,10 @@ func transcode(hlsStream stream.HLSVideoStream) (func(*stream.HLSSegment, bool),
 		//Insert into HLS stream
 		for i, strmID := range strmIDs {
 			glog.Infof("Inserting transcoded seg %v into strm: %v", len(tData[i]), strmID)
-			if err := hlsStream.AddHLSSegment(&stream.HLSSegment{SeqNo: seg.SeqNo, Name: fmt.Sprintf("%v_%v.ts", strmID, seg.SeqNo), Data: tData[i], Duration: 8}); err != nil {
+			seg := segmenter.NewHLSSegment(&segmenter.VideoSegment{SeqNo: seg.SeqNo(), Name: fmt.Sprintf("%v_%v.ts", strmID, seg.SeqNo()), Length: 8, Lazydata: func() ([]byte, error) {
+				return tData[i], nil
+			}})
+			if err := hlsStream.AddHLSSegment(seg); err != nil {
 				glog.Errorf("Error writing transcoded seg: %v", err)
 			}
 		}

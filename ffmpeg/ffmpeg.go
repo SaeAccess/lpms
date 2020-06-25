@@ -1,21 +1,21 @@
 package ffmpeg
 
+//#cgo pkg-config: libavformat libavfilter libavcodec libavutil libswscale gnutls
+//#include <stdlib.h>
+//#include "lpms_ffmpeg.h"
+import "C"
 import (
 	"errors"
 	"fmt"
-	"github.com/golang/glog"
 	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"unsafe"
-)
 
-// #cgo pkg-config: libavformat libavfilter libavcodec libavutil libswscale gnutls
-// #include <stdlib.h>
-// #include "lpms_ffmpeg.h"
-import "C"
+	"github.com/golang/glog"
+)
 
 var ErrTranscoderRes = errors.New("TranscoderInvalidResolution")
 var ErrTranscoderHw = errors.New("TranscoderInvalidHardware")

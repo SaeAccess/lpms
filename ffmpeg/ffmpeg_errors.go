@@ -1,6 +1,6 @@
 package ffmpeg
 
-// #cgo pkg-config: libavformat
+//#cgo pkg-config: libavformat
 //#include "ffmpeg_errors.h"
 //#include "lpms_ffmpeg.h"
 import "C"

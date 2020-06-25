@@ -45,13 +45,13 @@ type VideoSegment struct {
 	Filename string // filename for the video segment
 
 	data     []byte
-	lazydata func() ([]byte, error)
+	Lazydata func() ([]byte, error)
 }
 
 // Data provides lazy loading of data, segment file should be deleted
 func (vs *VideoSegment) Data() ([]byte, error) {
 	if vs.data == nil {
-		seg, err := vs.lazydata()
+		seg, err := vs.Lazydata()
 		if err != nil {
 			return nil, err
 		}
@@ -194,6 +194,11 @@ func (s *FFMpegVideoSegmenter) RTMPToHLSSegment(ctx context.Context) (SegmentRec
 					glog.Errorf("Error creating new video segment, error: %v", err)
 				}
 
+				// Seems we have to read the segment file here because there is
+				// posibility it could be deleted before its used for transcoding.
+				//
+				vs.Data()
+
 				// TODO we should also return the error so should provide wrapper
 				s.segChan <- vs
 			}
@@ -290,7 +295,7 @@ func (s *FFMpegVideoSegmenter) newVideoSegment(segment int) (*VideoSegment, erro
 		Name:     name,
 		SeqNo:    uint64(segment),
 		Filename: filename,
-		lazydata: func() ([]byte, error) {
+		Lazydata: func() ([]byte, error) {
 			seg, err := readFileFully(filename)
 			if err != nil {
 				// log error

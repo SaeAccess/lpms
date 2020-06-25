@@ -1,4 +1,4 @@
-package stream
+package rtmp
 
 import (
 	"context"
@@ -10,10 +10,11 @@ import (
 
 	"github.com/golang/glog"
 	"github.com/livepeer/joy4/av"
+	"github.com/livepeer/lpms/stream"
 )
 
 type BasicRTMPVideoStream struct {
-	appData      AppData // opaque app-supplied data
+	appData      stream.AppData // opaque app-supplied data
 	ch           chan *av.Packet
 	listeners    map[string]av.MuxCloser
 	listnersLock *sync.Mutex
@@ -26,7 +27,7 @@ type BasicRTMPVideoStream struct {
 }
 
 //NewBasicRTMPVideoStream creates a new BasicRTMPVideoStream.  The default RTMPTimeout is set to 10 milliseconds because we assume all RTMP streams are local.
-func NewBasicRTMPVideoStream(data AppData) *BasicRTMPVideoStream {
+func NewBasicRTMPVideoStream(data stream.AppData) *BasicRTMPVideoStream {
 	ch := make(chan *av.Packet)
 	eof := make(chan struct{})
 	listeners := make(map[string]av.MuxCloser)
@@ -70,12 +71,12 @@ func (s *BasicRTMPVideoStream) GetStreamID() string {
 	return s.appData.StreamID()
 }
 
-func (s *BasicRTMPVideoStream) AppData() AppData {
+func (s *BasicRTMPVideoStream) AppData() stream.AppData {
 	return s.appData
 }
 
-func (s *BasicRTMPVideoStream) GetStreamFormat() VideoFormat {
-	return RTMP
+func (s *BasicRTMPVideoStream) GetStreamFormat() stream.VideoFormat {
+	return stream.RTMP
 }
 
 //ReadRTMPFromStream reads the content from the RTMP stream out into the dst.

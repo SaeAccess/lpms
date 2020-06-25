@@ -14,6 +14,8 @@ import (
 	"github.com/livepeer/lpms/ffmpeg"
 	"github.com/livepeer/lpms/segmenter"
 	"github.com/livepeer/lpms/stream"
+	"github.com/livepeer/lpms/stream/hls"
+	"github.com/livepeer/lpms/stream/rtmp"
 	"github.com/livepeer/lpms/vidlistener"
 	"github.com/livepeer/lpms/vidplayer"
 	"github.com/livepeer/m3u8"
@@ -117,14 +119,14 @@ func (l *LPMS) Start(ctx context.Context) error {
 //HandleRTMPPublish offload to the video listener.  To understand how it works, look at videoListener.HandleRTMPPublish.
 func (l *LPMS) HandleRTMPPublish(
 	makeStreamID func(url *url.URL) (strmID stream.AppData),
-	gotStream func(url *url.URL, rtmpStrm stream.RTMPVideoStream) (err error),
-	endStream func(url *url.URL, rtmpStrm stream.RTMPVideoStream) error) {
+	gotStream func(url *url.URL, rtmpStrm rtmp.RTMPVideoStream) (err error),
+	endStream func(url *url.URL, rtmpStrm rtmp.RTMPVideoStream) error) {
 
 	l.vidListener.HandleRTMPPublish(makeStreamID, gotStream, endStream)
 }
 
 //HandleRTMPPlay offload to the video player
-func (l *LPMS) HandleRTMPPlay(getStream func(url *url.URL) (stream.RTMPVideoStream, error)) error {
+func (l *LPMS) HandleRTMPPlay(getStream func(url *url.URL) (rtmp.RTMPVideoStream, error)) error {
 	return l.vidPlayer.HandleRTMPPlay(getStream)
 }
 
@@ -138,7 +140,7 @@ func (l *LPMS) HandleHLSPlay(
 }
 
 //SegmentRTMPToHLS takes a rtmp stream and re-packages it into a HLS stream with the specified segmenter options
-func (l *LPMS) SegmentRTMPToHLS(ctx context.Context, rs stream.RTMPVideoStream, hs stream.HLSVideoStream, segOptions segmenter.SegmenterOptions) error {
+func (l *LPMS) SegmentRTMPToHLS(ctx context.Context, rs rtmp.RTMPVideoStream, hs hls.HLSVideoStream, segOptions segmenter.SegmenterOptions) error {
 	// set localhost if necessary. Check more problematic addrs? [::] ?
 	rtmpAddr := l.rtmpAddr
 	if strings.HasPrefix(rtmpAddr, "0.0.0.0") {

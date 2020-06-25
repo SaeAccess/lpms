@@ -1,4 +1,4 @@
-package stream
+package hls
 
 import (
 	"errors"
@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/livepeer/lpms/segmenter"
+	"github.com/livepeer/lpms/stream"
 	"github.com/livepeer/m3u8"
 )
 
@@ -21,11 +23,11 @@ var ErrAddHLSSegment = errors.New("ErrAddHLSSegment")
 //BasicHLSVideoStream is a basic implementation of HLSVideoStream
 type BasicHLSVideoStream struct {
 	plCache    *m3u8.MediaPlaylist //StrmID -> MediaPlaylist
-	segMap     map[string]HLSSegment
+	segMap     map[string]segmenter.HLSSegment
 	segNames   []string
 	lock       sync.Locker
 	strmID     string
-	subscriber func(HLSSegment, bool)
+	subscriber func(segmenter.HLSSegment, bool)
 	winSize    uint
 }
 
@@ -37,7 +39,7 @@ func NewBasicHLSVideoStream(strmID string, wSize uint) *BasicHLSVideoStream {
 
 	return &BasicHLSVideoStream{
 		plCache:  pl,
-		segMap:   make(map[string]HLSSegment),
+		segMap:   make(map[string]segmenter.HLSSegment),
 		segNames: make([]string, 0),
 		lock:     &sync.Mutex{},
 		strmID:   strmID,
@@ -46,17 +48,17 @@ func NewBasicHLSVideoStream(strmID string, wSize uint) *BasicHLSVideoStream {
 }
 
 //SetSubscriber sets the callback function that will be called when a new hls segment is inserted
-func (s *BasicHLSVideoStream) SetSubscriber(f func(seg HLSSegment, eof bool)) {
+func (s *BasicHLSVideoStream) SetSubscriber(f func(seg segmenter.HLSSegment, eof bool)) {
 	s.subscriber = f
 }
 
 //GetStreamID returns the streamID
 func (s *BasicHLSVideoStream) GetStreamID() string { return s.strmID }
 
-func (s *BasicHLSVideoStream) AppData() AppData { return nil }
+func (s *BasicHLSVideoStream) AppData() stream.AppData { return nil }
 
 //GetStreamFormat always returns HLS
-func (s *BasicHLSVideoStream) GetStreamFormat() VideoFormat { return HLS }
+func (s *BasicHLSVideoStream) GetStreamFormat() stream.VideoFormat { return stream.HLS }
 
 //GetStreamPlaylist returns the media playlist represented by the streamID
 func (s *BasicHLSVideoStream) GetStreamPlaylist() (*m3u8.MediaPlaylist, error) {
@@ -68,7 +70,7 @@ func (s *BasicHLSVideoStream) GetStreamPlaylist() (*m3u8.MediaPlaylist, error) {
 }
 
 //GetHLSSegment gets the HLS segment.  It blocks until something is found, or timeout happens.
-func (s *BasicHLSVideoStream) GetHLSSegment(segName string) (HLSSegment, error) {
+func (s *BasicHLSVideoStream) GetHLSSegment(segName string) (segmenter.HLSSegment, error) {
 	seg, ok := s.segMap[segName]
 	if !ok {
 		return nil, ErrNotFound
@@ -77,7 +79,7 @@ func (s *BasicHLSVideoStream) GetHLSSegment(segName string) (HLSSegment, error) 
 }
 
 //AddHLSSegment adds the hls segment to the right stream
-func (s *BasicHLSVideoStream) AddHLSSegment(seg HLSSegment) error {
+func (s *BasicHLSVideoStream) AddHLSSegment(seg segmenter.HLSSegment) error {
 	if _, ok := s.segMap[seg.Name()]; ok {
 		return nil //Already have the seg.
 	}
