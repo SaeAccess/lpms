@@ -31,9 +31,8 @@ type HLSSegment interface {
 	MediaSegment() *m3u8.MediaSegment
 	Cleanup()
 
-	// WithNewFileName creates a copy of the segment with data content from
-	// the supplied filename
-	WithNewFileName(filename string) HLSSegment
+	// Make new instance of HLSSegment using data references
+	WithData(filename string, data func() ([]byte, error)) HLSSegment
 }
 
 // hlsVideoSegment wraps a Segmenter VideoSegment to provide the HLSSegment interface
@@ -63,10 +62,11 @@ func (s hlsVideoSegment) MediaSegment() *m3u8.MediaSegment {
 
 func (s hlsVideoSegment) Cleanup() { s.segment.Cleanup() }
 
-func (s hlsVideoSegment) WithNewFileName(filename string) HLSSegment {
+func (s hlsVideoSegment) WithData(filename string, data func() ([]byte, error)) HLSSegment {
 	// Copy this segment then set new filename
 	vs := *s.segment
 	vs.Filename = filename
 	vs.data = nil
+	vs.Lazydata = data
 	return NewHLSSegment(&vs)
 }
